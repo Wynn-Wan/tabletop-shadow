@@ -1,6 +1,6 @@
 ---
 name: tabletop-shadow
-description: Add natural tabletop shadows to a single tobacco pipe on an existing plain background, fully offline. Supports side views, standing upright and flat lay, with protected product pixels and batch processing. Use for pipe product photos, contact shadows, grounding, 烟斗阴影 and 竖立烟斗底部阴影; not background replacement or generative retouching.
+description: Add offline tabletop shadows to a single tobacco pipe on a plain background. Anchor every camera angle at the complete object's lowest visible point, with protected product pixels and batch processing. Use for pipe product photos, contact shadows, grounding, 烟斗阴影 and 竖立烟斗底部阴影; not background replacement or generative retouching.
 license: MIT
 metadata:
   hermes:
@@ -29,18 +29,19 @@ For a confidently uniform opaque background, faint neutral old-shadow residue ne
 
 Hermes expands `${HERMES_SKILL_DIR}`. If template expansion is disabled, use the actual skill directory provided in the activation message. On systems using `python3`, substitute that executable. Use an interpreter with the dependencies installed, rather than an unrelated code-execution sandbox.
 
-## Choose placement
+## Apply the tabletop rule
 
-Choose the intended physical placement, not just the photo's orientation. Preserve an already established choice.
+Treat every input as resting on a tabletop through the lowest point of its complete visible silhouette. Keep this convention even when the camera angle makes that placement physically implausible. Include the mouthpiece if it extends below the wooden body. Normally let the renderer infer this coordinate; do not move the pipe down to the canvas edge.
+
+A visible bowl opening or an overhead-looking angle does not change this rule. The bundled `bowl-facing.png` uses `side`. Choose only the footprint shape below; do not ask the user to decide whether each photo is physically flat or standing.
 
 | Mode | Use |
 |---|---|
-| `--view side` | A horizontal or three-quarter pipe resting on the bowl; diffuse mouthpiece shadow remains visible. |
-| `--view upright` | A pipe standing on its wooden bottom; shadows concentrate at the lowest support and adjacent tabletop, not around the upper stem. |
-| `--view flat` | A pipe lying on the surface in an overhead view; a short-offset silhouette shadow. |
-| `--view auto` | Initial heuristic: tall foregrounds use upright, other foregrounds use side. Override when placement differs. |
+| `--view side` | A broad footprint at the lowest foreground y; raised parts retain a visible diffuse cast shadow. |
+| `--view upright` | A compact footprint around the lowest support, suited to vertical compositions; upper parts do not receive a halo. |
+| `--view auto` | Tall foregrounds use upright, other foregrounds use side; both use the same tabletop baseline. |
 
-In particular, a vertically composed photo is not automatically a flat lay. When the user says the pipe stands on its bottom, explicitly use `upright`; remove any old `flat` override in the command or JSON configuration.
+Since v1.3.0, legacy `--view flat` is a compatibility alias for grounded `auto` and produces a report warning. Prefer `auto`, `side` or `upright` in new commands and configuration. No mode creates an all-around flat-lay silhouette shadow.
 
 ## Adjust and verify
 

@@ -205,14 +205,41 @@ class ShadowTests(unittest.TestCase):
         self.assertEqual(int(alpha[:270].max()), 0)
         self.assertEqual(result.size, image.size)
 
-    def test_upright_explicit_mode_works_but_flat_still_requires_explicit_intent(self):
+    def test_legacy_flat_config_uses_grounded_auto_without_an_upper_halo(self):
         image = upright_fixture()
         _, upright, _, upright_report = render(image, {"view": "upright"})
         _, flat, _, flat_report = render(image, {"view": "flat"})
         self.assertEqual(upright_report["view_used"], "upright")
-        self.assertEqual(flat_report["view_used"], "flat")
-        self.assertEqual(int(np.asarray(upright)[:120, :, 3].max()), 0)
-        self.assertGreater(int(np.asarray(flat)[:120, :, 3].max()), 0)
+        self.assertEqual(flat_report["view_used"], "upright")
+        self.assertEqual(flat_report["view_requested"], "flat")
+        np.testing.assert_array_equal(np.asarray(upright), np.asarray(flat))
+        self.assertEqual(int(np.asarray(flat)[:270, :, 3].max()), 0)
+        self.assertTrue(flat_report["warnings"])
+
+    def test_complete_foreground_lowest_point_sets_table_even_when_stem_is_lower(self):
+        image = Image.new("RGB", (400, 300), (235, 231, 222))
+        draw = ImageDraw.Draw(image)
+        draw.ellipse((35, 50, 205, 175), fill=(170, 85, 35))
+        draw.polygon([(190, 105), (355, 244), (342, 254), (185, 125)], fill=(15, 18, 25))
+        for options in ({"view":"side"}, {"view":"side","method":"projected"},
+                        {"view":"upright"}, {"view":"flat"}, {}):
+            with self.subTest(options=options):
+                result,layer,mask,report = render(image, options)
+                self.assertLess(report["body_bbox_xyxy"][3], 254)
+                self.assertEqual(report["foreground_lowest_y"], 254)
+                self.assertEqual(report["geometry"]["ground_y"], 254)
+                self.assertGreater(int(np.asarray(layer)[254:267, 333:360, 3].max()), 8)
+                self.assertEqual(report["foreground_changed_pixels"], 0)
+                protected = np.asarray(mask) > 0
+                np.testing.assert_array_equal(np.asarray(result)[protected], np.asarray(image)[protected])
+
+    def test_horizontal_legacy_flat_matches_side_tabletop_placement(self):
+        image = fixture()
+        _,expected,_,_ = render(image,{"view":"side"})
+        _,actual,_,report = render(image,{"view":"flat"})
+        self.assertEqual(report["view_used"],"side")
+        self.assertEqual(report["geometry"]["ground_y"],165)
+        np.testing.assert_array_equal(np.asarray(expected),np.asarray(actual))
 
     def test_upright_config_routes_through_command_line(self):
         with tempfile.TemporaryDirectory() as tmp:

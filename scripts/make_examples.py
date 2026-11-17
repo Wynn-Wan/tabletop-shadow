@@ -14,7 +14,7 @@ def main():
     output = ROOT/"examples"/"output"
     previews = ROOT/"examples"/"previews"
     previews.mkdir(parents=True, exist_ok=True)
-    modes = {"side": "side", "top-view": "flat", "reverse-side": "side",
+    modes = {"side": "side", "bowl-facing": "side", "reverse-side": "side",
              "underside": "side", "upright": "upright"}
     reports = {}
     for name, view in modes.items():
@@ -29,7 +29,7 @@ def main():
             font = ImageFont.load_default(size=22)
         except TypeError:
             font = ImageFont.load_default()
-    for filename, name in (("side", "side"), ("upright", "upright"), ("flat", "top-view")):
+    for filename, name in (("side", "side"), ("upright", "upright"), ("bowl-facing", "bowl-facing")):
         canvas = Image.new("RGB", (1200, 384), "white")
         draw = ImageDraw.Draw(canvas)
         draw.text((18, 8), "Before", fill="#222222", font=font)
@@ -41,7 +41,7 @@ def main():
         canvas.save(previews/f"{filename}.png")
     print(json.dumps({"examples_rendered": len(reports),
                       "foreground_changed_pixels": sum(r["foreground_changed_pixels"] for r in reports.values()),
-                      "previews": ["side.png", "upright.png", "flat.png"]}))
+                      "previews": ["side.png", "upright.png", "bowl-facing.png"]}))
 
 
 if __name__ == "__main__":

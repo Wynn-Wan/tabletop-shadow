@@ -4,7 +4,7 @@
 
 [中文说明](README.zh-CN.md) · [Agent skill](SKILL.md) · [Detailed usage](references/usage.md) · [MIT license](LICENSE)
 
-Turn an already isolated pipe on a plain background into a grounded product photo. The renderer preserves the product's protected pixels and adds a separate contact/cast shadow layer. It supports a side view, a pipe standing on its bottom, and a flat lay.
+Turn an already isolated pipe on a plain background into a grounded product photo. Every photo is treated as resting on a tabletop through the lowest visible point of the complete object, regardless of camera angle or physical plausibility. The renderer preserves protected product pixels and adds a separate contact/cast shadow layer.
 
 ![Side-view photo before and after local rendering](examples/previews/side.png)
 
@@ -40,15 +40,17 @@ python scripts/add_shadow.py examples/input/upright.png --view upright --output 
 
 ![An upright pipe before and after local rendering](examples/previews/upright.png)
 
-`upright` puts the shadow around the lowest wooden support and nearby tabletop. It does not add a halo beside the whole stem. Photo orientation and physical placement are different: use `flat` for a pipe lying down in an overhead view, even when it points vertically in the image.
+`upright` concentrates the shadow around the object's lowest support and nearby tabletop. This shape suits vertical compositions; the upper body and stem do not receive an outline shadow. The tabletop baseline always comes from the complete foreground's lowest point.
 
-### Flat lay
+### Bowl-facing side view
 
 ```sh
-python scripts/add_shadow.py examples/input/top-view.png --view flat --output output/flat --debug
+python scripts/add_shadow.py examples/input/bowl-facing.png --view side --output output/bowl-facing --debug
 ```
 
-![Flat-lay photo before and after local rendering](examples/previews/flat.png)
+![Bowl-facing pipe resting on its side before and after local rendering](examples/previews/bowl-facing.png)
+
+This photo also rests on its lowest visible point, with a `side` footprint, even though the bowl opening faces the camera. The example formerly named `top-view.png` has been renamed to `bowl-facing.png` to avoid implying a different placement. Since v1.3.0, legacy `--view flat` configurations use grounded `auto` placement and report a warning; they no longer produce an all-around silhouette shadow.
 
 ### Batch
 
@@ -93,13 +95,13 @@ Useful controls: `--strength 0.8`, `--stem-strength 1.2`, `--softness 1.1` and `
 
 ## How it works and limits
 
-The default side-view renderer uses a small empirical Gaussian density field, adapted to the wooden body's dimensions, lowest support and mouthpiece geometry. A local contact shadow anchors it. Upright mode computes a separate footprint at the base; flat mode uses a short-offset blurred silhouette. These are deterministic 2D approximations, not physically reconstructed 3D shadows.
+The tabletop baseline is the maximum y coordinate of the complete foreground, including the mouthpiece if it is lower than the bowl. The default side renderer adapts a small empirical Gaussian density field to body dimensions, that baseline and mouthpiece geometry, plus a local contact shadow. Upright mode computes a footprint around the lowest support. These are deterministic 2D approximations following the same placement convention, not physically reconstructed 3D shadows.
 
 The numeric side-view parameters were calibrated during development against an image-generated visual reference. Only numeric parameters ship in the renderer; no generative model or generated reference image is needed at runtime.
 
 The protection region is estimated from source alpha, a supplied mask, or color difference from a plain border background. Enclosed pale highlights are protected. The bulky body is identified by silhouette thickness; material colors are only trusted after a coverage/support check, so a black bowl with a brown shank is not inverted. Faint neutral residue near the support can be cleaned before adding the new shadow; use `--keep-existing-shadows` to disable it. `foreground_changed_pixels: 0` verifies the protected region; it cannot prove the mask is semantically correct. Inspect the debug mask for difficult photos. Busy backgrounds, strong old shadows, multiple objects and unusual materials/poses may need a supplied mask or manual adaptation.
 
-The default `auto` mode uses bounding-box proportions only. Specify the intended placement when you know it. This tool does not isolate the pipe, replace backgrounds, rotate it, relight it or guarantee a correct shadow for every possible pipe shape.
+The default `auto` mode uses bounding-box proportions to choose a footprint shape: tall foregrounds use `upright`, others use `side`. Both use the same lowest-point tabletop rule. Camera angle does not select a separate flat-lay model. This tool does not isolate the pipe, replace backgrounds, rotate it, relight it or guarantee a correct shadow for every possible pipe shape.
 
 Regression coverage currently includes 18 photographs of three different pipes. Other small-object categories are experimental until tested; the broader project name is not a claim of universal support.
 
@@ -112,7 +114,7 @@ python scripts/make_examples.py
 python scripts/build_release.py
 ```
 
-Tests cover product/highlight preservation, upright base placement, absence of an upper-stem halo, transparent input, mouthpiece shadows, batch behavior, no source overwrite and rendering with sockets blocked. The bundled photo examples can be regenerated locally. Release archives and checksums are written to `dist/`.
+Tests cover product/highlight preservation, lowest-point support including a lower mouthpiece, upright base placement, absence of an upper-stem halo, legacy flat-config migration, transparent input, mouthpiece shadows, batch behavior, no source overwrite and rendering with sockets blocked. The bundled photo examples can be regenerated locally. Release archives and checksums are written to `dist/`.
 
 ## License and images
 

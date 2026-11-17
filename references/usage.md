@@ -2,17 +2,21 @@
 
 ## Placement
 
-Use `side` for a pipe resting on the wooden bowl, `upright` for one standing on its wooden bottom, and `flat` for an overhead flat lay. `auto` uses only foreground bounding-box proportions: height greater than 1.25 times width selects upright, otherwise side. It cannot infer physical placement from photo orientation alone.
+Every photo rests on a tabletop through the complete foreground's lowest visible point, regardless of camera angle or physical plausibility. This is a deliberate screen-space convention. The default plane y is the maximum foreground y, including a mouthpiece below the bowl; the original canvas and object position are preserved.
+
+`side` gives a broad tabletop footprint; `upright` concentrates it around the lowest support. `auto` chooses a footprint shape from bounding-box proportions: height greater than 1.25 times width selects upright, otherwise side. A visible bowl opening does not change the tabletop rule. The bundled `bowl-facing.png` (formerly `top-view.png`) uses `side`.
+
+From v1.3.0, `flat` remains accepted only as a compatibility alias for grounded `auto`, with a warning in the report. Old flat configs no longer produce an all-around silhouette shadow.
 
 ## Parameters
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--view` | `auto` | `auto`, `side`, `upright` or `flat`. |
+| `--view` | `auto` | `auto`, `side` or `upright`; legacy `flat` aliases `auto`. |
 | `--strength` | `1.0` | Overall shadow-opacity multiplier, allowed 0.1–2.0. |
-| `--stem-strength` | `1.0` | Mouthpiece cast strength in side/flat mode; distant base cast in upright mode, 0.1–2.5. |
+| `--stem-strength` | `1.0` | Mouthpiece cast strength in side mode; distant base cast in upright mode, 0.1–2.5. |
 | `--softness` | `1.0` | Spread multiplier, 0.4–2.0. Upright contact stays tight while the surrounding footprint changes. |
-| `--ground-y` | inferred | Side/upright support-plane y coordinate in displayed-image pixels. |
+| `--ground-y` | foreground maximum y | Explicit support-plane override in displayed-image pixels; normally leave inferred. |
 | `--method` | `calibrated` | Side renderer: measured soft footprint or alternative `projected` silhouette. |
 | `--depth` | `0.18` | Side `projected` method only; vertical compression, 0.06–0.45. |
 | `--light-x` | `0.06` | Side `projected` method only; horizontal projection shear, -0.3–0.3. |
@@ -32,12 +36,12 @@ For visual tuning, compare e.g. strength 0.8, 1.0 and 1.15. Change one parameter
   "files": {
     "side.png": {"view": "side"},
     "upright.png": {"view": "upright"},
-    "top-view.png": {"view": "flat"}
+    "bowl-facing.png": {"view": "side"}
   }
 }
 ```
 
-Keys are input-root-relative paths using `/`. Command-line arguments override per-image options, which override `defaults`. A stale explicit `flat` entry will continue to override automatic upright selection until corrected.
+Keys are input-root-relative paths using `/`. Command-line arguments override per-image options, which override `defaults`. Replace old `flat` entries with `auto`, `side` or `upright`; existing flat entries remain usable through the grounded compatibility alias.
 
 Only documented option names are accepted. RGB backgrounds must be three integers in 0–255 and `keep_existing_shadows` must be a JSON boolean. Invalid configuration is rejected before batch writes.
 
@@ -65,6 +69,7 @@ For opaque inputs, `*_shadow-only.png` is a masked overlay with zero alpha in th
 - `saved_png_verified`: saved PNG equals the in-memory lossless result.
 - `source_sha256`: fingerprint for checking the source was not modified.
 - `view_used`, `method`, `geometry`: selected rendering behavior and support estimate.
+- `placement_rule`, `foreground_lowest_y`, `ground_y_source`: lowest-point tabletop convention and whether the baseline was explicitly overridden.
 - `warnings`: crop or shadow-near-canvas-edge findings.
 - `body_detection`, `body_bbox_xyxy`: shape/material validation and selected body region.
 - `old_background_shadow_pixels_cleaned`: background corrections; a cleaned-base output is saved when nonzero.

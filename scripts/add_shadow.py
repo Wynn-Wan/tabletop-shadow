@@ -25,7 +25,7 @@ except ImportError as exc:
     ) from exc
 
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 ARTIFACT_KEY = "tabletop-shadow-artifact"
 
 
@@ -245,13 +245,6 @@ def project(a, ground, depth, shear, offset):
                                    resample=Image.Resampling.BICUBIC), dtype=np.float32) / 255
 
 
-def translate(a, dx, dy):
-    im = as_image(a)
-    return np.asarray(im.transform(im.size, Image.Transform.AFFINE,
-                                   (1, 0, -dx, 0, 1, -dy),
-                                   resample=Image.Resampling.BICUBIC), dtype=np.float32) / 255
-
-
 def combine(*layers):
     transmittance = np.ones_like(layers[0], dtype=np.float32)
     for layer in layers:
@@ -276,7 +269,7 @@ def calibrated_shadows(wood, stem, scale, options):
     neck = right if direction == 1 else left
     stem_length = max(12*scale, float(np.max(direction*(stem_x-neck)))) if len(stem_x) else 0
     stem_elevation = max(15*scale, ground-float(np.median(stem_y))) if len(stem_y) else body_height*.65
-    bottom_by_x = np.where(wood, np.arange(wood.shape[0])[:,None], -1).max(axis=0)
+    bottom_by_x = np.where(wood | stem, np.arange(wood.shape[0])[:,None], -1).max(axis=0)
     near_contact = np.flatnonzero(bottom_by_x >= ground-max(3*scale, body_height*.018))
     support_x = float(np.median(near_contact)) if len(near_contact) else (left+right)/2
     support_fraction = float(np.clip(direction*(support_x-far_edge)/body_width, .18, .86))
@@ -350,7 +343,7 @@ def side_shadows(wood, stem, scale, options):
             cast += blur(projected, radius) * density * attenuation
     ambient = blur(project(wood, ground, 0.12, shear * 0.4, 9 * scale),
                    23 * scale * softness) * 0.26
-    bottom = np.where(wood, np.arange(h)[:, None], -1).max(axis=0)
+    bottom = np.where(wood | stem, np.arange(h)[:, None], -1).max(axis=0)
     reach = max(4 * scale, body_height * 0.034)
     support = (bottom >= ground - reach * 1.6) & (bottom >= 0)
     contact_mask = np.zeros((h, w), dtype=np.float32)
@@ -366,20 +359,8 @@ def side_shadows(wood, stem, scale, options):
     }
 
 
-def flat_shadows(wood, stem, scale, options):
-    softness = float(options.get("softness", 1.0))
-    stem_strength = float(options.get("stem_strength", 1.0))
-    dx, dy = 6 * scale, 10 * scale
-    body = blur(translate(wood, dx, dy), 9 * scale * softness) * 0.30
-    elevated = blur(translate(stem, dx * 1.3, dy * 1.2),
-                    15 * scale * softness) * 0.40 * stem_strength
-    ambient = blur(translate(wood, dx / 2, dy / 2), 20 * scale * softness) * 0.09
-    contact = blur(translate(wood, 2 * scale, 3 * scale), 3 * scale * softness) * 0.22
-    return combine(body, elevated, ambient, contact), {"offset_xy": [dx, dy]}
-
-
 def upright_shadows(wood, stem, scale, options):
-    """A standing pipe meets a horizontal tabletop only at its wooden base.
+    """A vertical composition meets the tabletop at its lowest silhouette.
 
     Screen height is not treated as a row of contact points: the upper wood
     and mouthpiece must not receive an outline / drop shadow beside them.
@@ -387,12 +368,12 @@ def upright_shadows(wood, stem, scale, options):
     left, top, right, bottom = bbox(wood)
     body_width, body_height = right-left, bottom-top
     ground = float(options.get("ground_y", bottom-1))
-    bottom_by_x = np.where(wood, np.arange(wood.shape[0])[:, None], -1).max(axis=0)
+    bottom_by_x = np.where(wood | stem, np.arange(wood.shape[0])[:, None], -1).max(axis=0)
     reach = max(2*scale, body_height*.012)
     support = np.flatnonzero(bottom_by_x >= ground-reach)
     if not len(support):
         # A deliberately lowered support plane must still use the real foot x.
-        support = np.flatnonzero(bottom_by_x >= bottom-1-reach)
+        support = np.flatnonzero(bottom_by_x >= bottom_by_x.max()-reach)
     support_x = float(np.median(support))
     contact_width = max(body_width*.14, float(np.ptp(support)+1))
     softness = float(options.get("softness", 1.0))
@@ -417,7 +398,7 @@ def upright_shadows(wood, stem, scale, options):
         "support_columns": int(len(support)), "body_width": body_width,
         "contact_width": contact_width, "footprint_center_xy":
             [support_x+body_width*.06, ground+body_width*.035],
-        "placement": "standing-on-wooden-base",
+        "placement": "lowest-foreground-support",
     }
 
 
@@ -463,18 +444,20 @@ def render(image, options=None, mask_path=None, include_base=False):
     bounds = bbox(fg)
     longest = max(bounds[2] - bounds[0], bounds[3] - bounds[1])
     scale = longest / 1000.0
+    # Every camera angle uses one screen-space tabletop: the lowest point of
+    # the complete object, including a mouthpiece that extends below the bowl.
+    render_options = {**options, "ground_y": float(options.get("ground_y", bounds[3]-1))}
     view = options.get("view", "auto")
-    if view == "auto":
+    if view in ("auto", "flat"):
+        # Accept old configs, but never restore the former all-around halo.
         view = "upright" if bounds[3] - bounds[1] > (bounds[2] - bounds[0]) * 1.25 else "side"
     if view == "side":
         if options.get("method", "calibrated") == "calibrated":
-            opacity, geometry = calibrated_shadows(wood, stem, scale, options)
+            opacity, geometry = calibrated_shadows(wood, stem, scale, render_options)
         else:
-            opacity, geometry = side_shadows(wood, stem, scale, options)
-    elif view == "flat":
-        opacity, geometry = flat_shadows(wood, stem, scale, options)
+            opacity, geometry = side_shadows(wood, stem, scale, render_options)
     elif view == "upright":
-        opacity, geometry = upright_shadows(wood, stem, scale, options)
+        opacity, geometry = upright_shadows(wood, stem, scale, render_options)
     else:
         raise ValueError("view must be auto, side, flat or upright")
     opacity = np.clip(opacity * float(options.get("strength", 1.0)), 0, 0.82)
@@ -486,7 +469,7 @@ def render(image, options=None, mask_path=None, include_base=False):
     overlay[:, :, 3] = np.uint8(opacity * 255 + 0.5)
     shadow_layer = Image.fromarray(overlay)
     composite_base, cleaned_pixels = clean_support_background(
-        source, protected, wood, report, scale, options)
+        source, protected, wood, report, scale, render_options)
     source_im = Image.fromarray(composite_base)
     if report["transparent_input"]:
         if options.get("background"):
@@ -505,12 +488,17 @@ def render(image, options=None, mask_path=None, include_base=False):
         raise AssertionError("Product preservation invariant failed.")
     edges = np.concatenate((opacity[0], opacity[-1], opacity[:, 0], opacity[:, -1]))
     warnings = []
+    if options.get("view") == "flat":
+        warnings.append("Legacy flat mode now uses grounded auto placement at the lowest foreground point.")
     if float(edges.max()) > 0.025:
         warnings.append("Shadow approaches the canvas edge. Consider more source margin.")
     if bounds[0] <= 1 or bounds[1] <= 1 or bounds[2] >= source.shape[1] - 1 or bounds[3] >= source.shape[0] - 1:
         warnings.append("The pipe touches the canvas border; check the source crop.")
     report.update({
         "version": VERSION, "view_used": view, "view_requested": options.get("view", "auto"),
+        "placement_rule": "lowest-foreground-point-on-tabletop",
+        "foreground_lowest_y": bounds[3]-1,
+        "ground_y_source": "explicit-override" if "ground_y" in options else "foreground-lowest-point",
         "bbox_xyxy": bounds, "size_wh": list(result.size),
         "foreground_changed_pixels": altered_product,
         "protected_foreground_pixels": int(opaque_product.sum()),
@@ -518,8 +506,7 @@ def render(image, options=None, mask_path=None, include_base=False):
         "old_background_shadow_pixels_cleaned": cleaned_pixels,
         "shadow_max_opacity": round(float(opacity.max()), 4),
         "options": options, "geometry": geometry, "warnings": warnings,
-        "method": (options.get("method", "calibrated") if view == "side" else
-                   {"flat": "flat-silhouette", "upright": "upright-footprint"}[view]),
+        "method": options.get("method", "calibrated") if view == "side" else "upright-footprint",
         "offline": True,
     })
     rendered = (result, shadow_layer, as_image(protected), report)
@@ -667,7 +654,7 @@ def main(argv=None):
     parser.add_argument("input", type=Path, help="One image or a folder of images")
     parser.add_argument("--output", required=True, type=Path, help="Output folder; originals are never replaced")
     parser.add_argument("--view", choices=("auto", "side", "flat", "upright"), default=None,
-                        help="upright: pipe stands on its bottom, shadow stays at the base")
+                        help="All modes rest on the lowest foreground point; flat is a legacy alias for auto")
     parser.add_argument("--method", choices=("calibrated", "projected"), default=None,
                         help="Default: calibrated soft footprint measured from the approved style")
     parser.add_argument("--strength", type=float, default=None, help="Overall shadow, default 1.0")
